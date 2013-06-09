@@ -24,6 +24,7 @@ SublimeLinter has built in linters for the following languages:
 * Python - native, moderately-complete lint
 * Ruby - syntax check via `ruby -wc`
 * XML - lint via `xmllint`
+* YAML - lint via `PyYAML`
 
 Quickstart
 ------------
@@ -167,6 +168,8 @@ Following are notes specific to individual linters that you should be aware of:
 * **Perl** - Due to a vulnerability (issue [#77](https://github.com/SublimeLinter/SublimeLinter/issues/77)) with the Perl linter, Perl syntax checking is no longer enabled by default. The default linter for Perl has been replaced by Perl::Critic. The standard Perl syntax checker can still be invoked by switching the "perl_linter" setting to "perl".
 
 * **Ruby** - If you are using rvm or rbenv, you will probably have to specify the full path to the ruby you are using in the "sublimelinter_executable_map" setting. See "Configuring" below for more info.
+
+* **YAML** - This linter stops at the first error it sees. The PyYAML module has to be importable in Sublime Text 2.
 
 ### Per-project settings
 SublimeLinter supports per-project/per-language settings. This is useful if a linter requires path configuration on a per-project basis. To edit your project settings, select the menu item `Project->Edit Project`. If there is no "settings" object at the top level, add one and then add a "SublimeLinter" sub-object, like this:

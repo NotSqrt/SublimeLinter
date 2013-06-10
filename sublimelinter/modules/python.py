@@ -40,6 +40,8 @@
 # * fix regex for variable names inside strings (quotes)
 
 import re
+import os
+import json
 import _ast
 
 import pep8
@@ -50,7 +52,8 @@ from base_linter import BaseLinter
 pyflakes.messages.Message.__str__ = lambda self: self.message % self.message_args
 
 CONFIG = {
-    'language': 'Python'
+    'language': 'Python',
+    'lint_args': os.path.join(os.path.dirname(os.path.abspath(__file__)), 'libs', 'pythoncheck.py')
 }
 
 
@@ -96,37 +99,74 @@ class PythonError(PythonLintError):
 
 
 class Linter(BaseLinter):
+    def compile_check(self, view, code, filename, ignore=None):
+        """
+        either use the code inside this function
+        or call the module libs/pythoncheck.py with the requested python binary
+        and parse the result as json
+        """
+        python_binary = self.get_mapped_executable(view, default='built-in python')
+
+        if python_binary == 'built-in python':
+            try:
+                compile(code, filename, "exec")
+            except (SyntaxError, IndentationError), value:
+                msg = value.args[0]
+
+                (lineno, offset, text) = value.lineno, value.offset, value.text
+
+                # If there's an encoding problem with the file, the text is None.
+                if text is None:
+                    # Avoid using msg, since for the only known case, it contains a
+                    # bogus message that claims the encoding the file declared was
+                    # unknown.
+                    if msg.startswith('duplicate argument'):
+                        arg = msg.split('duplicate argument ', 1)[1].split(' ', 1)[0].strip('\'"')
+                        error = pyflakes.messages.DuplicateArgument(filename, lineno, arg)
+                    else:
+                        error = PythonError(filename, lineno, msg)
+                else:
+                    line = text.splitlines()[-1]
+
+                    if offset is not None:
+                        offset = offset - (len(text) - len(line))
+
+                    if offset is not None:
+                        error = OffsetError(filename, lineno, msg, offset)
+                    else:
+                        error = PythonError(filename, lineno, msg)
+                return [error]
+            except ValueError, e:
+                return [PythonError(filename, 0, e.args[0])]
+            return []
+        else:
+            # take advantage of the existing functions, but fakes the presence of an executable
+            self.executable = python_binary
+            result = self.executable_check(view, code, filename)
+            self.executable = None
+
+            # always return an iterable object
+            for line in result.splitlines():
+                error = json.loads(line)
+
+                if error.get('class') == u'OffsetError':
+                    error = OffsetError(filename, error.get('line'), error.get('msg'), error.get('offset'))
+                elif error.get('class') == u'PythonError':
+                    error = PythonError(filename, error.get('line'), error.get('msg'))
+                elif error.get('class') == u'DuplicateArgument':  # same as pyflakes.messages.DuplicateArgument
+                    error = pyflakes.messages.DuplicateArgument(filename, error.get('line'), error.get('arg'))
+                else:
+                    return []
+
+                return [error]
+            return []
+
     def pyflakes_check(self, code, filename, ignore=None):
         try:
             tree = compile(code, filename, "exec", _ast.PyCF_ONLY_AST)
-        except (SyntaxError, IndentationError), value:
-            msg = value.args[0]
-
-            (lineno, offset, text) = value.lineno, value.offset, value.text
-
-            # If there's an encoding problem with the file, the text is None.
-            if text is None:
-                # Avoid using msg, since for the only known case, it contains a
-                # bogus message that claims the encoding the file declared was
-                # unknown.
-                if msg.startswith('duplicate argument'):
-                    arg = msg.split('duplicate argument ', 1)[1].split(' ', 1)[0].strip('\'"')
-                    error = pyflakes.messages.DuplicateArgument(filename, lineno, arg)
-                else:
-                    error = PythonError(filename, lineno, msg)
-            else:
-                line = text.splitlines()[-1]
-
-                if offset is not None:
-                    offset = offset - (len(text) - len(line))
-
-                if offset is not None:
-                    error = OffsetError(filename, lineno, msg, offset)
-                else:
-                    error = PythonError(filename, lineno, msg)
-            return [error]
-        except ValueError, e:
-            return [PythonError(filename, 0, e.args[0])]
+        except (SyntaxError, IndentationError, ValueError):
+            # these errors are already caught by compile_check
+            return []
         else:
             # Okay, it's syntactically valid.  Now check it.
             if ignore is not None:
@@ -199,6 +239,11 @@ class Linter(BaseLinter):
 
         pyflakes_ignore = view.settings().get('pyflakes_ignore', None)
         pyflakes_disabled = view.settings().get('pyflakes_disabled', False)
+
+        compile_disabled = view.settings().get('compile_disabled', False)
+
+        if not compile_disabled:
+            errors.extend(self.compile_check(view, code, filename))
 
         if not pyflakes_disabled:
             errors.extend(self.pyflakes_check(code, filename, pyflakes_ignore))

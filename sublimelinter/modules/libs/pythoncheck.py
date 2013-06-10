@@ -1,5 +1,14 @@
 import sys
 import json
+"""
+This file has to be valid for the maximum number of python versions.
+OK for python2.7, python3.3
+
+The json library has to be importable.
+Ok for python >= 2.7
+Certainly not for python<2.6
+For 2.6, this module is not called.
+"""
 
 
 def compile_for_sublimelinter():
@@ -9,10 +18,10 @@ def compile_for_sublimelinter():
     import _ast
 
     try:
-        tree = compile(code, '<string>', "exec", _ast.PyCF_ONLY_AST)
         # useful if you need the tree, but duplicate arguments don't get raised
+        tree = compile(code, '<string>', "exec", _ast.PyCF_ONLY_AST)
+        # builds the tree into bytecode, raises duplicate argument errors
         compile(tree, '<string>', 'exec')
-        # builds the code, raises duplicate argument errors
     except (SyntaxError, IndentationError) as value:
         msg = value.args[0]
 
@@ -48,9 +57,9 @@ def main():
         # SublimeLinter is testing for the usability of this file
         pass
     else:
-        errors = compile_for_sublimelinter()
-        if errors:
-            print(json.dumps(errors))
+        error = compile_for_sublimelinter()
+        if error:
+            print(json.dumps(error))
 
 
 if __name__ == '__main__':
